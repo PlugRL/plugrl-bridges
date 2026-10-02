@@ -30,6 +30,14 @@ def main() -> int:
     p.add_argument("--seed", type=int, required=True)
     p.add_argument("--out", required=True)
     a = p.parse_args()
+    if not a.run_dir.startswith("/"):
+        # Git Bash rewrites /home/... into D:/Program Files/Git/home/... when it
+        # starts a Windows program. The poll below would then never find the
+        # run's end, and the clients would outlive it (E48's AMENDMENT.md).
+        p.error(
+            f"--run-dir {a.run_dir!r} is not a path on the remote machine; "
+            "from Git Bash, run with MSYS_NO_PATHCONV=1"
+        )
 
     out = pathlib.Path(a.out)
     out.mkdir(parents=True, exist_ok=True)

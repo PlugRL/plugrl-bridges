@@ -22,6 +22,10 @@ It closes such a connection for a resync and says why.
 
 It never invents data. A connection that closes mid-run fails the next
 `step` or `gather` with ClientLost, and the run stops there.
+
+With `episode_log` (or PLUGRL_BRIDGES_EPISODE_LOG set), it writes one CSV
+line per episode that ends, counted from the rewards the clients sent: the
+same record whichever trainer steps it.
 """
 
 from __future__ import annotations
@@ -29,6 +33,7 @@ from __future__ import annotations
 import asyncio
 import dataclasses
 import logging
+import os
 import threading
 from typing import Any
 
@@ -61,7 +66,7 @@ class Full(ProtocolError):
 
 # websockets logs every connection at INFO; one line each is noise in RLinf's
 # log, and a client stuck reconnecting turns it into hundreds of MB.
-_ws_logger = logging.getLogger("plugrl_rlinf.websockets")
+_ws_logger = logging.getLogger("plugrl_bridges.websockets")
 _ws_logger.setLevel(logging.WARNING)
 
 
@@ -79,6 +84,51 @@ class SlotResult:
     info: dict
     feedback_obs: dict  # the observation the step ended on: terminal if done
     next_obs: dict  # the observation the next step starts from: reset if done
+
+
+EPISODE_LOG_ENV = "PLUGRL_BRIDGES_EPISODE_LOG"
+
+
+class EpisodeLog:
+    """`step,slot,episode,return,length`, one line per episode that ends.
+
+    `step` is the server's step on which it ended, counting from 1. A step is
+    one action chunk, so with `action_horizon` 1 steps and lengths are env
+    steps. `episode` counts each slot's episodes from 1. The return is the
+    sum of the rewards the client fed back, before any trainer touches them.
+    """
+
+    HEADER = "step,slot,episode,return,length\n"
+
+    def __init__(self, path: str | os.PathLike, num_envs: int) -> None:
+        self._file = open(path, "w", encoding="utf-8", newline="")
+        self._file.write(self.HEADER)
+        self._file.flush()
+        self._returns = np.zeros(num_envs, dtype=np.float64)
+        self._lengths = np.zeros(num_envs, dtype=np.int64)
+        self._episodes = np.zeros(num_envs, dtype=np.int64)
+        self._step = 0
+
+    def record(self, results: list[SlotResult]) -> None:
+        self._step += 1
+        ended = False
+        for slot, r in enumerate(results):
+            self._returns[slot] += r.reward
+            self._lengths[slot] += 1
+            if r.terminated or r.truncated:
+                self._episodes[slot] += 1
+                self._file.write(
+                    f"{self._step},{slot},{self._episodes[slot]},"
+                    f"{self._returns[slot]:.6f},{self._lengths[slot]}\n"
+                )
+                self._returns[slot] = 0.0
+                self._lengths[slot] = 0
+                ended = True
+        if ended:
+            self._file.flush()
+
+    def close(self) -> None:
+        self._file.close()
 
 
 def _int_vector(value, what: str) -> np.ndarray:
@@ -189,15 +239,20 @@ class BridgeServer:
         action_dim: int,
         timeout: float = 600.0,
         metadata: dict | None = None,
+        episode_log: str | os.PathLike | None = None,
     ) -> None:
         self.host, self.port = host, port
+        episode_log = episode_log or os.environ.get(EPISODE_LOG_ENV) or None
+        self._episode_log = (
+            EpisodeLog(episode_log, num_envs) if episode_log is not None else None
+        )
         self.num_envs = num_envs
         self.action_horizon = action_horizon
         self.action_dim = action_dim
         self.timeout = timeout
         self.metadata = {
             "protocol_version": 1,
-            "server": "plugrl-rlinf",
+            "server": "plugrl-bridges",
             "action_horizon": action_horizon,
             "action_dim": action_dim,
             "num_envs": num_envs,
@@ -237,10 +292,16 @@ class BridgeServer:
         expected = (self.num_envs, self.action_horizon, self.action_dim)
         if actions.shape != expected:
             raise ValueError(f"actions must be {expected}, got {actions.shape}")
-        return self._call(self._step(actions))
+        results = self._call(self._step(actions))
+        if self._episode_log is not None:
+            self._episode_log.record(results)
+        return results
 
     def close(self) -> None:
         """End the run: every client gets plugrl-server-stop."""
+        if self._episode_log is not None:
+            self._episode_log.close()
+            self._episode_log = None
         if self._loop is None:
             return
         try:
@@ -467,7 +528,7 @@ class BridgeServer:
             # environments were (RLinf collects the worker's stdout).
             peer = getattr(c.ws, "remote_address", None)
             print(
-                f"plugrl-rlinf: slots {c.slots[0]}-{c.slots[-1]} <- {peer}",
+                f"plugrl-bridges: slots {c.slots[0]}-{c.slots[-1]} <- {peer}",
                 flush=True,
             )
             return rows

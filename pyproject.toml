@@ -1,7 +1,7 @@
 [project]
-name = "plugrl-rlinf"
+name = "plugrl-bridges"
 version = "0.1.0"
-description = "RLinf trains environments that PlugRL env clients run, through the PlugRL protocol"
+description = "Trainers that were not written for PlugRL (RLinf, Stable-Baselines3, gymnasium) train PlugRL env clients"
 readme = "README.md"
 license = "Apache-2.0"
 requires-python = ">=3.10"
@@ -10,18 +10,20 @@ authors = [
     { name = "Zuo Gou" },
     { name = "Zilin Kang" },
 ]
+# The bridge server needs only these; each adapter's trainer is an extra.
 dependencies = [
     "numpy>=1.24",
-    "torch>=2.1",
     "websockets>=14",
     "plugrl-protocol @ git+https://github.com/PlugRL/plugrl-protocol.git@0a76192cc2456ee1136c5cbabe5206ca75e38f98",
 ]
 
 [project.optional-dependencies]
-gym = ["gymnasium>=0.29"]
+rlinf = ["torch>=2.1", "gymnasium>=0.29"]
+gym = ["gymnasium>=1.0"]
+sb3 = ["stable-baselines3>=2.3", "gymnasium>=1.0"]
 
 [dependency-groups]
-dev = ["pytest>=8", "gymnasium>=0.29"]
+dev = ["pytest>=8", "torch>=2.1", "gymnasium>=1.0", "stable-baselines3>=2.3"]
 
 [build-system]
 requires = ["hatchling"]
@@ -31,10 +33,23 @@ build-backend = "hatchling.build"
 allow-direct-references = true
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/plugrl_rlinf"]
+packages = ["src/plugrl_bridges"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 
 [tool.ruff]
 line-length = 88
+
+# CleanRL's script stays line-for-line comparable with upstream.
+[tool.ruff.format]
+exclude = ["examples/cleanrl/*"]
+
+# CI and local development take torch's CPU build; RLinf brings its own.
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
+
+[tool.uv.sources]
+torch = { index = "pytorch-cpu" }
