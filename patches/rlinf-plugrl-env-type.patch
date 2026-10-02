@@ -1,0 +1,24 @@
+RLinf at 034579c: add env_type plugrl (plugrl-bridges' PlugRLEnv).
+Apply from the RLinf checkout: patch -p1 < rlinf-plugrl-env-type.patch
+
+--- a/rlinf/envs/__init__.py
++++ b/rlinf/envs/__init__.py
+@@ -43,6 +43,8 @@
+     D4RL = "d4rl"
+     DIFFUSION = "diffusion"
+     POLARIS = "polaris"
++    # Environments run by PlugRL env clients, over the PlugRL protocol.
++    PLUGRL = "plugrl"
+ 
+     @classmethod
+     def _missing_(cls, value: object) -> "SupportedEnvType | None":
+@@ -185,5 +187,9 @@
+         from rlinf.envs.sim.polaris.polaris_env import PolarisEnv
+ 
+         return PolarisEnv
++    elif env_type == SupportedEnvType.PLUGRL:
++        from plugrl_bridges.rlinf import PlugRLEnv
++
++        return PlugRLEnv
+     else:
+         raise NotImplementedError(f"Environment type {env_type} not implemented")

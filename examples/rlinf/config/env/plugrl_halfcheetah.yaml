@@ -1,0 +1,35 @@
+# RLinf env config for env_type plugrl: HalfCheetah-v5, run by PlugRL env
+# clients rather than by RLinf. Each env worker process listens on
+# port + its seed offset; start the clients against that port with
+#   plugrl-run-env-client mujoco-v1 --server-host HOST --server-port PORT \
+#       --num-envs K --num-episodes 1000000 --runner.replan-steps 1
+# so that the clients' envs add up to the process's share of total_num_envs.
+env_type: plugrl
+
+host: 0.0.0.0
+port: 8800
+state_keys: ["obs"]
+image_key: null
+action_dim: 6
+action_low: -1.0
+action_high: 1.0
+timeout: 600
+episode_log: null   # a CSV path: one line per episode, written by the bridge
+
+seed: 0
+total_num_envs: null
+group_size: 1
+
+auto_reset: True
+ignore_terminations: False
+max_steps_per_rollout_epoch: 256
+max_episode_steps: 1000
+
+use_rel_reward: False
+reward_coef: 1.0
+is_eval: False
+
+video_cfg:
+  save_video: False
+  info_on_video: False
+  video_base_dir: ${runner.logger.log_path}/video/train

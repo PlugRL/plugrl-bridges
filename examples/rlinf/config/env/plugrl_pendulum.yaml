@@ -1,0 +1,33 @@
+# RLinf env config for env_type plugrl: Pendulum, run by the C++ client of
+# plugrl-server's E44 (pendulum_client.cpp: one env per process, its own copy
+# of gymnasium's Pendulum-v1, torque clipped to [-2, 2]). Start 16 of them:
+#   for s in $(seq 16); do ./pendulum_client HOST PORT $s & done
+env_type: plugrl
+
+host: 0.0.0.0
+port: 8800
+state_keys: ["obs"]
+image_key: null
+action_dim: 1
+action_low: -2.0
+action_high: 2.0
+timeout: 600
+episode_log: null   # a CSV path: one line per episode, written by the bridge
+
+seed: 0
+total_num_envs: null
+group_size: 1
+
+auto_reset: True
+ignore_terminations: False
+max_steps_per_rollout_epoch: 256
+max_episode_steps: 200
+
+use_rel_reward: False
+reward_coef: 1.0
+is_eval: False
+
+video_cfg:
+  save_video: False
+  info_on_video: False
+  video_base_dir: ${runner.logger.log_path}/video/train
