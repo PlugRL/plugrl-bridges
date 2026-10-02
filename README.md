@@ -1,51 +1,96 @@
-# plugrl-rlinf
+# plugrl-bridges
 
-[RLinf](https://github.com/RLinf/RLinf) trains environments that PlugRL env
+Trainers that were not written for PlugRL train environments that PlugRL env
 clients run, through the [PlugRL protocol](https://github.com/PlugRL/plugrl-protocol).
 
-RLinf runs its environments inside its own cluster, as Ray workers with
-RLinf's Python and torch. This bridge is an RLinf environment type,
-`plugrl`, whose environments are anywhere else that can reach a port:
-- a `plugrl-env-client` on a machine with no GPU and no RLinf;
-- the C++ client in plugrl-protocol, which links nothing but the C++
-  runtime;
-- anything else that speaks the protocol.
+An env client speaks the protocol from wherever its environment has to
+live:
+- another process, or another machine with no GPU and no deep learning stack;
+- a program in another language: the C++ client in plugrl-protocol links
+  nothing but the C++ runtime.
 
-RLinf sees an ordinary vectorised environment. The client sees an ordinary
-PlugRL training server.
+This package puts such clients behind the environment interface a trainer
+already has:
+
+| adapter | for | interface |
+| --- | --- | --- |
+| `plugrl_bridges.rlinf.PlugRLEnv` | [RLinf](https://github.com/RLinf/RLinf) | RLinf's env contract, `env_type: plugrl` |
+| `plugrl_bridges.gym.PlugRLVectorEnv` | CleanRL, TorchRL, your own loop | `gymnasium.vector.VectorEnv` |
+| `plugrl_bridges.sb3.PlugRLVecEnv` | [Stable-Baselines3](https://github.com/DLR-RM/stable-baselines3) | SB3's `VecEnv` |
+
+```python
+import gymnasium as gym, numpy as np
+from stable_baselines3 import PPO
+from plugrl_bridges.sb3 import PlugRLVecEnv
+
+env = PlugRLVecEnv(num_envs=16, port=8800,
+                   action_space=gym.spaces.Box(-1, 1, (6,), np.float32))
+PPO("MlpPolicy", env).learn(409_600)
+```
+
+The adapter blocks until 16 environments have connected, and reads the
+observation space off what they sent.
 
 ## How it works
 
-`PlugRLEnv` implements RLinf's environment contract, `reset()` and
-`chunk_step(actions)` under `auto_reset`. It does so on top of
-`BridgeServer`, a PlugRL server that runs in a thread of RLinf's
-environment worker:
-- **Reset** waits until every slot has asked for its first action.
-- **Each `chunk_step`** sends every client its actions. It returns once each
-  client has sent its feedback and asked again.
-- **Episodes ending.** For each env whose episode ended, the terminal
-  observation goes in `infos["final_observation"]`, and the episode's return
-  and length in `infos["final_info"]["episode"]`. RLinf's own simulators do
-  the same.
-- **Features.** The server offers `reuse-feedback-obs`.
+All three adapters sit on one `BridgeServer`, a PlugRL protocol server that
+the trainer steps from its own thread:
+- **Slots.** Each env client takes slots in the order it connects.
+- **Steps.** Each step sends every client its actions. It returns once each
+  client has fed back and asked for its next action.
+- **Episode ends.** For each env whose episode ended, the step returns its
+  reset observation, with the terminal one beside it, the way each trainer
+  expects: `final_observation` for RLinf, `final_obs` under gymnasium's
+  SAME_STEP autoreset, `terminal_observation` for SB3. Episode returns and
+  lengths are counted by the bridge, from the raw rewards.
+- **Episode log.** With `episode_log=PATH` (RLinf: `env.train.episode_log`),
+  or `PLUGRL_BRIDGES_EPISODE_LOG` set, the server writes one CSV line per
+  episode: `step,slot,episode,return,length`. It is the same record
+  whichever trainer steps the bridge, so runs of different trainers can be
+  compared on it.
+- **Features.** The server offers `reuse-feedback-obs`, so a client that
+  uses it sends each observation once.
 
-It is a **lockstep** server: RLinf steps all of its environments together,
-so every infer and every feedback on a connection must name all of that
+It is a **lockstep** server: these trainers step all their environments
+together, so every infer and feedback on a connection must name all of that
 connection's envs. A client running one-step chunks always does, and the
-server's metadata asks for `action_horizon: 1`. A client that breaks
-lockstep is closed for a resync with the reason. A client that disconnects
-mid-run stops the run (`ClientLost`). The bridge never fills in a step it
-did not receive.
+server's metadata says `action_horizon: 1`. It never fills in a step it did
+not receive:
+- a client that breaks lockstep is closed for a resync;
+- a client too many is told to stop;
+- a client lost mid-run stops the run (`ClientLost`).
+
+Two things a trainer cannot do through it:
+- **Reset environments itself.** The protocol has no way for a server to
+  ask, so `reset()` returns the observations the next step starts from.
+- **Use per-env methods.** Those environments are reached only through the
+  protocol.
+
+**gymnasium notes.** As of gymnasium 1.3:
+- Its vector observation wrappers refuse SAME_STEP autoreset, so
+  `plugrl_bridges.gym.NormalizeObservation` is provided.
+- Its vector `RecordEpisodeStatistics` counts as if autoreset were
+  NEXT_STEP. Read `infos["episode"]` from the adapter instead.
 
 ## Install
 
-RLinf has a closed list of environment types, so it needs a two-line patch
-to know `plugrl`. The patch is in `patches/`. Then:
-
 ```bash
-pip install -e /path/to/RLinf          # with the patch applied
-pip install plugrl-rlinf
+pip install "plugrl-bridges[sb3]"     # or [gym], [rlinf]
 ```
+
+RLinf has a closed list of environment types, so it needs a two-hunk patch
+to know `plugrl` (`patches/`).
+
+## Examples
+
+- `examples/sb3/ppo.py`: SB3's PPO.
+- `examples/cleanrl/ppo_continuous_action.py`: CleanRL's PPO script, with
+  only its environment creation and episode logging changed (MIT,
+  `LICENSE-CLEANRL`).
+- `examples/rlinf/`: RLinf PPO-MLP configs.
+- `examples/run_bridged.sh`: one run of any of them, with 16 env clients.
+- `examples/smoke_probe.py`, `examples/drive_probe.py`: checks against real
+  clients on SPEC.md's probe environment.
 
 ## Tests
 
@@ -53,9 +98,6 @@ pip install plugrl-rlinf
 uv run --group dev pytest
 ```
 
-The tests drive `PlugRLEnv` the way RLinf's environment worker does, against
-fake clients that speak the real protocol.
-
 ## License
 
-Apache-2.0.
+Apache-2.0. `examples/cleanrl/` is CleanRL's, under MIT.

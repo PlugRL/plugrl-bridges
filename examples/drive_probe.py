@@ -25,7 +25,7 @@ import time
 
 import torch
 
-from plugrl_rlinf.env import PlugRLEnv
+from plugrl_bridges.rlinf import PlugRLEnv
 
 LENGTHS = [
     3,

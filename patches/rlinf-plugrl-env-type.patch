@@ -1,4 +1,4 @@
-RLinf at 034579c: add env_type plugrl (plugrl-rlinf's PlugRLEnv).
+RLinf at 034579c: add env_type plugrl (plugrl-bridges' PlugRLEnv).
 Apply from the RLinf checkout: patch -p1 < rlinf-plugrl-env-type.patch
 
 --- a/rlinf/envs/__init__.py
@@ -17,7 +17,7 @@ Apply from the RLinf checkout: patch -p1 < rlinf-plugrl-env-type.patch
  
          return PolarisEnv
 +    elif env_type == SupportedEnvType.PLUGRL:
-+        from plugrl_rlinf.env import PlugRLEnv
++        from plugrl_bridges.rlinf import PlugRLEnv
 +
 +        return PlugRLEnv
      else:

@@ -19,8 +19,8 @@ import websockets.sync.client
 
 from plugrl_protocol import msgpack_numpy
 from plugrl_protocol.websocket_protocol import SERVER_RESYNC_REASON, SERVER_STOP_REASON
-from plugrl_rlinf import ClientLost
-from plugrl_rlinf.env import PlugRLEnv
+from plugrl_bridges import ClientLost
+from plugrl_bridges.rlinf import PlugRLEnv
 
 
 def _free_port() -> int:
@@ -222,6 +222,50 @@ def test_an_ended_episode_reports_its_terminal_observation_and_statistics(port):
         env.close()
 
 
+def test_the_episode_log_counts_each_episode_from_the_clients_rewards(port, tmp_path):
+    log = tmp_path / "episodes.csv"
+    env = _env(port, 2, episode_log=str(log))
+    client = FakeClient(port, 2, episode=[2, 3])
+    client.start()
+    try:
+        env.reset()
+        for k in range(1, 7):  # each env's reward on step k is 2k
+            env.chunk_step(torch.full((2, 1, 2), float(k)))
+    finally:
+        env.close()
+    lines = log.read_text(encoding="utf-8").splitlines()
+    assert lines[0] == "step,slot,episode,return,length"
+    rows = [
+        (int(s), int(slot), int(e), float(r), int(n))
+        for s, slot, e, r, n in (line.split(",") for line in lines[1:])
+    ]
+    assert rows == [
+        (2, 0, 1, 2 + 4, 2),
+        (3, 1, 1, 2 + 4 + 6, 3),
+        (4, 0, 2, 6 + 8, 2),
+        (6, 0, 3, 10 + 12, 2),
+        (6, 1, 2, 8 + 10 + 12, 3),
+    ]
+
+
+def test_the_episode_log_path_can_come_from_the_environment(
+    port, tmp_path, monkeypatch
+):
+    from plugrl_bridges.server import EPISODE_LOG_ENV
+
+    log = tmp_path / "from-env.csv"
+    monkeypatch.setenv(EPISODE_LOG_ENV, str(log))
+    env = _env(port, 1)
+    client = FakeClient(port, 1, episode=[1])
+    client.start()
+    try:
+        env.reset()
+        env.chunk_step(torch.ones((1, 1, 2)))
+    finally:
+        env.close()
+    assert log.read_text(encoding="utf-8").splitlines()[1:] == ["1,0,1,2.000000,1"]
+
+
 def test_a_client_that_reuses_observations_gets_the_same_observations(port):
     env = _env(port, 2)
     client = FakeClient(port, 2, episode=[2, 5], reuse=True)
@@ -292,7 +336,7 @@ def test_a_client_too_many_mid_run_is_refused_and_the_run_goes_on(port):
 def test_only_a_connection_holding_slots_counts_as_lost(port):
     """The rule behind the test above, without its timing: a connection that
     was refused, or closed, before it took a slot stops nothing."""
-    from plugrl_rlinf.server import BridgeServer, _Connection
+    from plugrl_bridges.server import BridgeServer, _Connection
 
     server = BridgeServer(port=port, num_envs=2, action_horizon=1, action_dim=2)
     refused, holding = _Connection(None, 1), _Connection(None, 2)
@@ -311,7 +355,7 @@ def test_auto_reset_is_required(port):
 
 def test_info_splits_as_plugrl_server_splits_it():
     """Found by the real env client: its info has leaves that are not per env."""
-    from plugrl_rlinf.server import ProtocolError, _split_info
+    from plugrl_bridges.server import ProtocolError, _split_info
 
     info = {
         "episode": {"r": np.asarray([1.0, 2.0]), "l": np.asarray([3, 4])},
