@@ -3,9 +3,10 @@
 #
 # plugrl_halfcheetah_ppo_mlp.yaml with rl-baselines3-zoo's published PPO
 # settings for Pendulum-v1, as E44 used them: gamma 0.9, gae_lambda 0.95,
-# 10 epochs, lr 1e-3, clip 0.2, no entropy bonus. (E44's pilot found that
-# defaults barely learn Pendulum.) 16 envs x 256 steps = 4,096 frames per
-# epoch; 25 epochs is E44's 102,400 steps.
+# 10 epochs, lr 1e-3, clip 0.2, no entropy bonus, minibatch 64 (rl-zoo leaves
+# batch_size at SB3's default). (E44's pilot found that defaults barely learn
+# Pendulum.) 16 envs x 256 steps = 4,096 frames per epoch; 25 epochs is E44's
+# 102,400 steps.
 #
 # Copy this file to RLinf's examples/embodiment/config/ and env/plugrl_pendulum.yaml
 # to examples/embodiment/config/env/.
@@ -113,8 +114,11 @@ rollout:
 actor:
   group_name: ActorGroup
   training_backend: fsdp
-  micro_batch_size: 256
-  global_batch_size: 1024
+  # rl-zoo's Pendulum-v1 PPO leaves batch_size at SB3's default, 64: with
+  # 10 epochs, 640 updates per 4,096-frame rollout. The 1,024 this config
+  # first inherited from RLinf's CartPole template made 40 (E49's pilot).
+  micro_batch_size: 64
+  global_batch_size: 64
   seed: 1234
   enable_offload: false
 

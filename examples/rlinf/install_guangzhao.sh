@@ -24,7 +24,10 @@ fi
 uv pip install --python "$PY" -e "$BRIDGES"
 cp "$BRIDGES"/examples/rlinf/config/plugrl_*_ppo_mlp.yaml "$RLINF/examples/embodiment/config/"
 cp "$BRIDGES"/examples/rlinf/config/env/plugrl_*.yaml "$RLINF/examples/embodiment/config/env/"
-"$PY" - <<'EOF'
+# RLinf is not installed as a package; its launcher puts the checkout on
+# PYTHONPATH, so the check does too.
+(cd "$RLINF" && PYTHONPATH="$RLINF" "$PY" - <<'EOF'
 from rlinf.envs import SupportedEnvType, get_env_cls
 print("env cls", get_env_cls(SupportedEnvType("plugrl").value))
 EOF
+)
