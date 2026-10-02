@@ -45,12 +45,13 @@ class FakeClient(threading.Thread):
     Its reward is the sum of the action it got. Env i ends its episode after
     `episode[i]` steps: the terminal observation is -1 - i, and the reset
     observation starts again at t = 0. With `lockstep_break`, the second
-    feedback names only env 0.
+    feedback names only env 0. With `image`, each observation also carries
+    `frame`, a uint8 [4, 4, 1] image filled with the value mod 256.
     """
 
     def __init__(
         self, port, n, *, base=0, episode=None, reuse=False, lockstep_break=False,
-        slow=0.0,
+        slow=0.0, image=False,
     ):  # fmt: skip
         super().__init__(daemon=True)
         self.port, self.n, self.base = port, n, base
@@ -58,12 +59,21 @@ class FakeClient(threading.Thread):
         self.reuse = reuse
         self.lockstep_break = lockstep_break
         self.slow = slow  # seconds to wait before each feedback
+        self.image = image
         self.actions: list[np.ndarray] = []
         self.metadata: dict | None = None
         self.close_reason: str | None = None
 
     def value(self, i: int, t: int) -> float:
         return 100.0 * self.base + 10.0 * i + t
+
+    def observation(self, values: list[float]) -> dict:
+        obs = _obs(values)
+        if self.image:
+            obs["images"]["frame"] = np.stack(
+                [np.full((4, 4, 1), int(v) % 256, np.uint8) for v in values]
+            )
+        return obs
 
     def run(self) -> None:
         packer = msgpack_numpy.Packer()
@@ -84,7 +94,7 @@ class FakeClient(threading.Thread):
                     reusable = [held and t[i] > 0 for i in range(self.n)]
                     if self.reuse and any(reusable):
                         infer["reuse"] = np.asarray(reusable)
-                        infer["data"] = _obs(
+                        infer["data"] = self.observation(
                             [
                                 self.value(i, t[i])
                                 for i in range(self.n)
@@ -92,7 +102,7 @@ class FakeClient(threading.Thread):
                             ]
                         )
                     else:
-                        infer["data"] = _obs(
+                        infer["data"] = self.observation(
                             [self.value(i, t[i]) for i in range(self.n)]
                         )
                     ws.send(packer.pack(infer))
@@ -119,7 +129,7 @@ class FakeClient(threading.Thread):
                                 "env_indices": envs,
                                 "step_ids": np.asarray(t)[: len(envs)],
                                 "data": {
-                                    "obs": _obs(nxt),
+                                    "obs": self.observation(nxt),
                                     "rewards": rewards,
                                     "terminated": np.asarray(ended),
                                     "truncated": np.zeros(len(envs), bool),

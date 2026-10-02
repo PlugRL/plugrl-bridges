@@ -15,6 +15,11 @@ time) as SB3's Monitor would put it, counted by the bridge, so SB3 logs
 `rollout/ep_rew_mean` with no wrapper. `reset()` cannot end the episodes in
 progress - the protocol has no way for a server to ask - so it returns the
 observations the next step starts from.
+
+The observation is the clients' `state_keys`, flattened into float32, or,
+with `image_key`, that one image as sent: a uint8 [H, W, C] camera frame
+gives a uint8 Box that SB3's CnnPolicy takes as an image. A Discrete action
+space works too: actions cross as one float per env.
 """
 
 from __future__ import annotations
@@ -26,7 +31,12 @@ import gymnasium as gym
 import numpy as np
 from stable_baselines3.common.vec_env.base_vec_env import VecEnv
 
-from plugrl_bridges.observations import EpisodeStats, stack_states
+from plugrl_bridges.observations import (
+    EpisodeStats,
+    observation_space_of,
+    stack_images,
+    stack_states,
+)
 from plugrl_bridges.server import BridgeServer
 
 
@@ -35,14 +45,16 @@ class PlugRLVecEnv(VecEnv):
         self,
         *,
         num_envs: int,
-        action_space: gym.spaces.Box,
+        action_space: gym.Space,
         port: int = 8800,
         host: str = "0.0.0.0",
         state_keys: tuple[str, ...] = ("obs",),
+        image_key: str | None = None,
         timeout: float = 600.0,
         episode_log: str | None = None,
     ) -> None:
         self.state_keys = list(state_keys)
+        self.image_key = image_key
         self.server = BridgeServer(
             host=host,
             port=port,
@@ -53,14 +65,16 @@ class PlugRLVecEnv(VecEnv):
             episode_log=episode_log,
         )
         self.server.start()
-        self._next = stack_states(self.server.gather(), self.state_keys)
-        observation_space = gym.spaces.Box(
-            -np.inf, np.inf, (self._next.shape[1],), np.float32
-        )
-        super().__init__(num_envs, observation_space, action_space)
+        self._next = self._observe(self.server.gather())
+        super().__init__(num_envs, observation_space_of(self._next), action_space)
         self._stats = EpisodeStats(num_envs)
         self._started = time.time()
         self._actions: np.ndarray | None = None
+
+    def _observe(self, rows: list[dict]) -> np.ndarray:
+        if self.image_key is not None:
+            return stack_images(rows, self.image_key)
+        return stack_states(rows, self.state_keys)
 
     def reset(self) -> np.ndarray:
         # The clients seed and reset their own environments.
@@ -73,7 +87,7 @@ class PlugRLVecEnv(VecEnv):
 
     def step_wait(self):
         results = self.server.step(self._actions)
-        obs = stack_states([r.next_obs for r in results], self.state_keys)
+        obs = self._observe([r.next_obs for r in results])
         rewards = np.asarray([r.reward for r in results], dtype=np.float32)
         terminated = np.asarray([r.terminated for r in results], dtype=np.bool_)
         truncated = np.asarray([r.truncated for r in results], dtype=np.bool_)
@@ -81,9 +95,9 @@ class PlugRLVecEnv(VecEnv):
         self._stats.add(rewards)
         infos: list[dict[str, Any]] = [{} for _ in range(self.num_envs)]
         for i in np.flatnonzero(dones):
-            infos[i]["terminal_observation"] = stack_states(
-                [results[i].feedback_obs], self.state_keys
-            )[0]
+            infos[i]["terminal_observation"] = self._observe([results[i].feedback_obs])[
+                0
+            ]
             infos[i]["TimeLimit.truncated"] = bool(truncated[i] and not terminated[i])
             infos[i]["episode"] = {
                 "r": float(self._stats.returns[i]),

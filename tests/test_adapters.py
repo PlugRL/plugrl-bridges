@@ -140,6 +140,58 @@ def test_sb3_vec_env_reports_episodes_as_sb3_expects(port):
         env.close()
 
 
+def test_sb3_vec_env_with_image_key_gives_sb3_an_image_space(port):
+    from stable_baselines3.common.preprocessing import is_image_space
+
+    from plugrl_bridges.sb3 import PlugRLVecEnv
+
+    env, client = _connect_then(
+        port, 2,
+        lambda: PlugRLVecEnv(num_envs=2, action_space=gym.spaces.Discrete(3), port=port,
+                             host="127.0.0.1", image_key="frame", timeout=20),
+        episode=[2, 3], image=True,
+    )  # fmt: skip
+    try:
+        assert env.observation_space.dtype == np.uint8
+        assert env.observation_space.shape == (4, 4, 1)
+        assert is_image_space(env.observation_space)
+        obs = env.reset()
+        assert obs.dtype == np.uint8 and obs.shape == (2, 4, 4, 1)
+        assert obs[:, 0, 0, 0].tolist() == [0, 10]
+        env.step(np.asarray([1, 2]))  # Discrete: one integer per env
+        obs, _, dones, infos = env.step(np.asarray([1, 2]))
+        assert dones.tolist() == [True, False]
+        # The terminal frame of env 0 is -1 mod 256; its reset frame is 0.
+        assert infos[0]["terminal_observation"].dtype == np.uint8
+        assert int(infos[0]["terminal_observation"][0, 0, 0]) == 255
+        assert obs[:, 0, 0, 0].tolist() == [0, 12]
+        assert client.actions[0][0].ravel().tolist() == [1.0, 2.0]
+    finally:
+        env.close()
+
+
+def test_gym_vector_env_with_image_key_steps_images(port):
+    from plugrl_bridges.gym import PlugRLVectorEnv
+
+    env, client = _connect_then(
+        port, 2,
+        lambda: PlugRLVectorEnv(num_envs=2, action_space=ACTIONS, port=port,
+                                host="127.0.0.1", image_key="frame", timeout=20),
+        episode=[2, 3], image=True,
+    )  # fmt: skip
+    try:
+        assert env.single_observation_space == gym.spaces.Box(
+            0, 255, (4, 4, 1), np.uint8
+        )
+        env.step(np.ones((2, 2)))
+        obs, _, term, _, infos = env.step(np.ones((2, 2)))
+        assert term.tolist() == [True, False]
+        assert int(infos["final_obs"][0][0, 0, 0]) == 255
+        assert obs.dtype == np.uint8 and obs[:, 0, 0, 0].tolist() == [0, 12]
+    finally:
+        env.close()
+
+
 def test_sb3_ppo_learns_on_it_without_complaint(port):
     """Not whether it learns (that is an experiment), but that SB3 runs on it."""
     from stable_baselines3 import PPO
