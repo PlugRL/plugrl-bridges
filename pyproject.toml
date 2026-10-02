@@ -1,0 +1,40 @@
+[project]
+name = "plugrl-rlinf"
+version = "0.1.0"
+description = "RLinf trains environments that PlugRL env clients run, through the PlugRL protocol"
+readme = "README.md"
+license = "Apache-2.0"
+requires-python = ">=3.10"
+authors = [
+    { name = "Chenhao Lu" },
+    { name = "Zuo Gou" },
+    { name = "Zilin Kang" },
+]
+dependencies = [
+    "numpy>=1.24",
+    "torch>=2.1",
+    "websockets>=14",
+    "plugrl-protocol @ git+https://github.com/PlugRL/plugrl-protocol.git@0a76192cc2456ee1136c5cbabe5206ca75e38f98",
+]
+
+[project.optional-dependencies]
+gym = ["gymnasium>=0.29"]
+
+[dependency-groups]
+dev = ["pytest>=8", "gymnasium>=0.29"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.metadata]
+allow-direct-references = true
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/plugrl_rlinf"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 88
