@@ -38,7 +38,12 @@ import numpy as np
 from gymnasium.vector import AutoresetMode
 from gymnasium.vector.utils import batch_space
 
-from plugrl_bridges.observations import EpisodeStats, stack_states
+from plugrl_bridges.observations import (
+    EpisodeStats,
+    observation_space_of,
+    stack_images,
+    stack_states,
+)
 from plugrl_bridges.server import BridgeServer
 
 
@@ -49,15 +54,17 @@ class PlugRLVectorEnv(gym.vector.VectorEnv):
         self,
         *,
         num_envs: int,
-        action_space: gym.spaces.Box,
+        action_space: gym.Space,
         port: int = 8800,
         host: str = "0.0.0.0",
         state_keys: tuple[str, ...] = ("obs",),
+        image_key: str | None = None,
         timeout: float = 600.0,
         episode_log: str | None = None,
     ) -> None:
         self.num_envs = int(num_envs)
         self.state_keys = list(state_keys)
+        self.image_key = image_key
         self.single_action_space = action_space
         self.action_space = batch_space(action_space, self.num_envs)
         self.server = BridgeServer(
@@ -70,15 +77,18 @@ class PlugRLVectorEnv(gym.vector.VectorEnv):
             episode_log=episode_log,
         )
         self.server.start()
-        self._next = stack_states(self.server.gather(), self.state_keys)
-        self.single_observation_space = gym.spaces.Box(
-            -np.inf, np.inf, (self._next.shape[1],), np.float32
-        )
+        self._next = self._observe(self.server.gather())
+        self.single_observation_space = observation_space_of(self._next)
         self.observation_space = batch_space(
             self.single_observation_space, self.num_envs
         )
         self._stats = EpisodeStats(self.num_envs)
         self._started = np.full(self.num_envs, time.perf_counter())
+
+    def _observe(self, rows: list[dict]) -> np.ndarray:
+        if self.image_key is not None:
+            return stack_images(rows, self.image_key)
+        return stack_states(rows, self.state_keys)
 
     def reset(self, *, seed: Any = None, options: dict | None = None):
         # The clients seed and reset their own environments.
@@ -87,7 +97,7 @@ class PlugRLVectorEnv(gym.vector.VectorEnv):
     def step(self, actions):
         actions = np.asarray(actions, dtype=np.float32).reshape(self.num_envs, 1, -1)
         results = self.server.step(actions)
-        obs = stack_states([r.next_obs for r in results], self.state_keys)
+        obs = self._observe([r.next_obs for r in results])
         rewards = np.asarray([r.reward for r in results], dtype=np.float64)
         terminated = np.asarray([r.terminated for r in results], dtype=np.bool_)
         truncated = np.asarray([r.truncated for r in results], dtype=np.bool_)
@@ -106,9 +116,7 @@ class PlugRLVectorEnv(gym.vector.VectorEnv):
             self._stats.end(done)
             final_obs = np.full(self.num_envs, None, dtype=object)
             for i in np.flatnonzero(done):
-                final_obs[i] = stack_states([results[i].feedback_obs], self.state_keys)[
-                    0
-                ]
+                final_obs[i] = self._observe([results[i].feedback_obs])[0]
             infos["final_obs"] = final_obs
             infos["_final_obs"] = done.copy()
             infos["final_info"] = {}

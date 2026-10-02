@@ -43,6 +43,11 @@ the trainer steps from its own thread:
   expects: `final_observation` for RLinf, `final_obs` under gymnasium's
   SAME_STEP autoreset, `terminal_observation` for SB3. Episode returns and
   lengths are counted by the bridge, from the raw rewards.
+- **Observations.** The SB3 and gymnasium adapters give the trainer the
+  clients' `state_keys`, flattened into float32, or, with `image_key`, that
+  one image as sent. A uint8 [H, W, C] camera frame becomes a uint8 Box that
+  SB3's CnnPolicy takes as an image. Discrete action spaces work too: an
+  action crosses as one float per env.
 - **Episode log.** With `episode_log=PATH` (RLinf: `env.train.episode_log`),
   or `PLUGRL_BRIDGES_EPISODE_LOG` set, the server writes one CSV line per
   episode: `step,slot,episode,return,length`. It is the same record
