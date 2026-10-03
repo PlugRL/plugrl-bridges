@@ -79,8 +79,10 @@ Two things a trainer cannot do through it:
 
 ## Install
 
+It is not on PyPI; install it from the repository:
+
 ```bash
-pip install "plugrl-bridges[sb3]"     # or [gym], [rlinf]
+pip install "plugrl-bridges[sb3] @ git+https://github.com/PlugRL/plugrl-bridges.git"   # or [gym], [rlinf]
 ```
 
 RLinf has a closed list of environment types, so it needs a two-hunk patch
@@ -102,6 +104,12 @@ to know `plugrl` (`patches/`).
 ```bash
 uv run --group dev pytest
 ```
+
+## Who
+
+plugrl-bridges is part of PlugRL, built by [Chenhao Lu](https://github.com/CTP314),
+[Zuo Gou](https://github.com/tactino) and
+[Zilin Kang](https://github.com/nothingbutbut).
 
 ## License
 
