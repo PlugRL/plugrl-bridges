@@ -114,6 +114,8 @@ package's Stable-Baselines3 adapter, and its bridge log is one of the checks
 the paper compares
 ([PDF](https://plugrl.github.io/assets/silent-faults-webp2026.pdf),
 [summary and video](https://plugrl.github.io/#when-the-boundary-is-wrong-nothing-says-so)).
+The step ledger the paper recommends is packaged separately as
+[step-ledger](https://github.com/PlugRL/step-ledger).
 
 ## Who
 
