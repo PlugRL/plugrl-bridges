@@ -105,6 +105,16 @@ to know `plugrl` (`patches/`).
 uv run --group dev pytest
 ```
 
+## Paper
+
+The fault-injection runs of *Detecting Silent Faults at the Environment-Trainer
+Boundary in Reinforcement Learning* (CoRL 2026 Workshop on Everything Beneath
+the Policy; E54-E58 in plugrl-server's `experiments/`) trained through this
+package's Stable-Baselines3 adapter, and its bridge log is one of the checks
+the paper compares
+([PDF](https://plugrl.github.io/assets/silent-faults-webp2026.pdf),
+[summary and video](https://plugrl.github.io/#when-the-boundary-is-wrong-nothing-says-so)).
+
 ## Who
 
 plugrl-bridges is part of PlugRL, built by [Chenhao Lu](https://github.com/CTP314),
