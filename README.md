@@ -112,7 +112,7 @@ Boundary in Reinforcement Learning* (CoRL 2026 Workshop on Everything Beneath
 the Policy; E54-E58 in plugrl-server's `experiments/`) trained through this
 package's Stable-Baselines3 adapter, and its bridge log is one of the checks
 the paper compares
-([PDF](https://plugrl.github.io/assets/silent-faults-webp2026.pdf),
+([arXiv:2611.08144](https://arxiv.org/abs/2611.08144),
 [summary and video](https://plugrl.github.io/#when-the-boundary-is-wrong-nothing-says-so)).
 The step ledger the paper recommends is packaged separately as
 [step-ledger](https://github.com/PlugRL/step-ledger).
